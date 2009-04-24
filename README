@@ -1,0 +1,14 @@
+=======
+builder
+=======
+
+Tools to live side by side with Metro and manage gentoo/funtoo machines in chrooted directories.
+
+Dependecy
+=========
+Following libraries are now needed as dependency
+
+ * configobj from Void
+
+
+
