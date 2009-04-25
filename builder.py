@@ -149,7 +149,7 @@ def screen_to_machine(machine):
     _check_and_mount('sys',sys_mount,'sysfs')
     #check for portage mounted and mount
     portage_mount = machine_chroot + '/usr/portage'
-    portage = settings['config']['general']['portage_trees'] + '/' + +settings['machine']['portage']
+    portage = settings['config']['general']['portage_trees'] + '/' + settings['machine']['portage']
     _check_path_or_die(portage_mount)
     _check_path_or_die(portage)
     _check_and_mount(portage,portage_mount)
@@ -170,7 +170,11 @@ def _check_and_mount(what,mount_point,type='bind'):
         emit_message('\t[%s] already mounted .. skipping' % what)
     else:
         emit_message('\tmounting %s at [%s]' % (what,mount_point))
-        status, result = commands.getstatusoutput('mount -t %s %s %s' % (type,what,mount_point))
+        if type == 'bind':
+            mount_command = 'mount -o bind %s %s' % (what, mount_point)
+        else:
+            mount_command = 'mount -t %s %s %s' % (type,what,mount_point)
+        status, result = commands.getstatusoutput(mount_command)
         if status:
             print 'ERROR: unable to mount ..exiting. Reason: \n%s' %result
             sys.exit(2)
