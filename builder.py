@@ -67,52 +67,53 @@ def init_machine(machine):
     #test if machine dir exists in chroots
     machine_chroot = settings['config']['general']['chroots_top']+'/'+settings['machine']['name']
     if os.path.exists(machine_chroot):
-        print 'Machine directory [%s] already exists ..exiting' % machineRoot
+        print 'Machine directory [%s] already exists ..exiting' % machine_chroot
         sys.exit(2)
     else:
         #create it
-        emit_message('Creating [%s]' % machine_chroot)
+        emit_message('\tcreating [%s]' % machine_chroot)
         _ensure_dir(machine_chroot)
     
     #now unpack the backup there
     stage4_backup = settings['config']['general']['stage4_top'] + '/' + settings['machine']['stage4']
+    emit_message('\tunpacking stage4 [%s]' % stage4_backup)
     if not os.path.exists(stage4_backup):
         print 'No valid stage4 (backup) machine image provided [%s] ..exiting' % stage4_backup
         sys.exit(2)
     else:  
         #unpack the file
-        os.chdir(machine_root)
+        os.chdir(machine_chroot)
         (status, _results['unpack_log']) = commands.getstatusoutput('tar xjvpf %s' % stage4_backup)
         
-    #link portage tree
-    portage_tree = settings['config']['general']['portage_trees']+ '/' + settings['machine']['portage']
-    if not os.path.exists(portage_tree):
-        print 'Error: selected portage tree [%s] does not exists in ..exiting' % portage_tree
-        sys.exit(2)
-    _ensure_dir(machine_chroot + '/usr/portage')
-    os.chdir(machine_chroot + '/usr/')
+    #link portage tree ---- NOT NEEDED this will be part of screen command
+#    portage_tree = settings['config']['general']['portage_trees']+ '/' + settings['machine']['portage']
+#    if not os.path.exists(portage_tree):
+#        print 'Error: selected portage tree [%s] does not exists in ..exiting' % portage_tree
+#        sys.exit(2)
+#    _ensure_dir(machine_chroot + '/usr/portage')
+#    os.chdir(machine_chroot + '/usr/')
     #TODO this should be either a symbolic link or when we screen to the machine as this solution
     # will not persists over reboot
-    (status, _results['portage_log']) = commands.getstatusoutput('mount -o bind %s %s' % (portage_tree,'portage'))
+#    (status, _results['portage_log']) = commands.getstatusoutput('mount -o bind %s %s' % (portage_tree,'portage'))
 
     #link packages dir
+    _emit_message('\tlinking pkgbin directory')
     machine_pkg_dir = machine_chroot + '/srv/packages'  
     pkg_dir = settings['config']['general']['pkgbin_top']
     _ensure_dir(pkg_dir)
     _ensure_dir(machine_pkg_dir)
     os.chdir(pkg_dir)
-    os.symlink(machine_pkg_dir, pkg_dir)
+    os.symlink(machine_pkg_dir, settings['machine']['name'])
 
     os.chdir(settings['cwd'])
     return _results
 
-def _ensure_dir(path):
+def _ensure_dir(dir):
     '''
     Responsible for creating directories if they do not exists
     '''
-    d =os.path.dirname(path)
-    if not os.path.exists(d):
-        os.makedirs(d)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
     
 
 def screen_to_machine(machine):
@@ -183,8 +184,6 @@ def main():
     #dump settings if verbose
     if options.verbose:
         print settings
-
-
 
     #handle actions
     if options.init_machine:
