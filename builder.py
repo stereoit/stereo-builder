@@ -153,11 +153,27 @@ def screen_to_machine(machine):
     _check_path_or_die(portage_mount)
     _check_path_or_die(portage)
     _check_and_mount(portage,portage_mount)
+
+    #check if screen does not exists already for given machine otherwise start it
+    (status, result) = commands.getstatusoutput('screen -list|grep buidler.%s' % machine)
     message = '''
     Everything mounted, please issue following commands to login to machine environment:
-    screen -R %s.builder
-    chroot %s
-    ''' % (machine, machine_chroot)
+    screen -R builder.%s
+    and set new PS1 with
+    export PS1='\[\033[01;31m\]\h\[\033[01;34m\] \W \$\[\033[00m\] '
+    ''' % machine
+    if not status:
+        emit_message('\tScreen already exists .. skipping')
+        message = '''
+        Everything mounted, but screen session builder.%s already exists. To log into machine issue:
+        screen -R builder.%s.2
+        chroot %s
+        and set new PS1 with
+        export PS1='\[\033[01;31m\]\h\[\033[01;34m\] \W \$\[\033[00m\] '
+        ''' % (machine,machine,machine_chroot)
+    else:        
+        #run initial screen and chroot
+        commands.getstatusoutput('screen -dmS builder.%s chroot %s' % (machine, machine_chroot))
     emit_message(message)
 
 
