@@ -77,13 +77,11 @@ def init_machine(machine):
     #now unpack the backup there
     stage4_backup = settings['config']['general']['stage4_top'] + '/' + settings['machine']['stage4']
     emit_message('\tunpacking stage4 [%s]' % stage4_backup)
-    if not os.path.exists(stage4_backup):
-        print 'No valid stage4 (backup) machine image provided [%s] ..exiting' % stage4_backup
-        sys.exit(2)
-    else:  
-        #unpack the file
-        os.chdir(machine_chroot)
-        (status, _results['unpack_log']) = commands.getstatusoutput('tar xjvpf %s' % stage4_backup)
+    _check_path_or_die(stage4_backup, 
+         msg='No valid stage4 (backup) machine image provided [%s] ..exiting' % stage4_backup)
+    #unpack the file
+    os.chdir(machine_chroot)
+    (status, _results['unpack_log']) = commands.getstatusoutput('tar xjvpf %s' % stage4_backup)
         
     #link portage tree ---- NOT NEEDED this will be part of screen command
 #    portage_tree = settings['config']['general']['portage_trees']+ '/' + settings['machine']['portage']
@@ -97,7 +95,7 @@ def init_machine(machine):
 #    (status, _results['portage_log']) = commands.getstatusoutput('mount -o bind %s %s' % (portage_tree,'portage'))
 
     #link packages dir
-    _emit_message('\tlinking pkgbin directory')
+    emit_message('\tlinking pkgbin directory')
     machine_pkg_dir = machine_chroot + '/srv/packages'  
     pkg_dir = settings['config']['general']['pkgbin_top']
     _ensure_dir(pkg_dir)
@@ -107,6 +105,15 @@ def init_machine(machine):
 
     os.chdir(settings['cwd'])
     return _results
+
+def _check_path_or_die(path, msg=None):
+    '''
+    Check whether given path exists or print message and die.
+    '''
+    msg = msg and msg or 'Missing path [%s] ..exiting' % path 
+    if not os.path.exists(path):
+        print msg
+        sys.exit(2)
 
 def _ensure_dir(dir):
     '''
@@ -118,11 +125,55 @@ def _ensure_dir(dir):
 
 def screen_to_machine(machine):
     '''
-    Checks whether the bin/sh exists in chroot directory and creates
-    screen connection with chroot.
+    Responsible for checking that all mountpoints are mounted (sys,proc,
+    portage and stuff).
+    Then it should:
+    basic checks (directories exists and such)
+    create screen
+    chroot to machine
+    disconnect from screen
+    write message to user how to access the machine
     '''
     emit_message('screen_to_machine() called [%s]' % machine)
-    pass
+    #check if machine directory exists
+    machine_chroot =  settings['config']['general']['chroots_top']+'/'+settings['machine']['name']
+    _check_path_or_die(machine_chroot)
+
+    #check for proc mounted and mount
+    proc_mount = machine_chroot + '/proc'
+    _check_path_or_die(proc_mount)
+    _check_and_mount('proc',proc_mount,'proc')
+    #check for sys mounted and mount
+    sys_mount = machine_chroot + '/sys'
+    _check_path_or_die(sys_mount)
+    _check_and_mount('sys',sys_mount,'sysfs')
+    #check for portage mounted and mount
+    portage_mount = machine_chroot + '/usr/portage'
+    portage = settings['config']['general']['portage_trees'] + '/' + +settings['machine']['portage']
+    _check_path_or_die(portage_mount)
+    _check_path_or_die(portage)
+    _check_and_mount(portage,portage_mount)
+    message = '''
+    Everything mounted, please issue following commands to login to machine environment:
+    screen -R %s.builder
+    chroot %s
+    ''' % (machine, machine_chroot)
+    emit_message(message)
+
+
+def _check_and_mount(what,mount_point,type='bind'):
+    '''
+    Check if given mount [what] is mounted and mount if it is not.
+    '''
+    status, result = commands.getstatusoutput('grep %s /proc/mounts|grep %s' % (mount_point,what))
+    if not status :
+        emit_message('\t[%s] already mounted .. skipping' % what)
+    else:
+        emit_message('\tmounting %s at [%s]' % (what,mount_point))
+        status, result = commands.getstatusoutput('mount -t %s %s %s' % (type,what,mount_point))
+        if status:
+            print 'ERROR: unable to mount ..exiting. Reason: \n%s' %result
+            sys.exit(2)
 
 def main():
     #check if user is root
@@ -188,6 +239,8 @@ def main():
     #handle actions
     if options.init_machine:
         init_machine(machine)
+    if options.screen:
+        screen_to_machine(machine)
 
 #main loop, if called as a program start main
 if __name__ == '__main__':
