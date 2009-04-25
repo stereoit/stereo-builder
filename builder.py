@@ -83,17 +83,6 @@ def init_machine(machine):
     os.chdir(machine_chroot)
     (status, _results['unpack_log']) = commands.getstatusoutput('tar xjvpf %s' % stage4_backup)
         
-    #link portage tree ---- NOT NEEDED this will be part of screen command
-#    portage_tree = settings['config']['general']['portage_trees']+ '/' + settings['machine']['portage']
-#    if not os.path.exists(portage_tree):
-#        print 'Error: selected portage tree [%s] does not exists in ..exiting' % portage_tree
-#        sys.exit(2)
-#    _ensure_dir(machine_chroot + '/usr/portage')
-#    os.chdir(machine_chroot + '/usr/')
-    #TODO this should be either a symbolic link or when we screen to the machine as this solution
-    # will not persists over reboot
-#    (status, _results['portage_log']) = commands.getstatusoutput('mount -o bind %s %s' % (portage_tree,'portage'))
-
     #link packages dir
     emit_message('\tlinking pkgbin directory')
     machine_pkg_dir = machine_chroot + '/srv/packages'  
@@ -155,12 +144,10 @@ def screen_to_machine(machine):
     _check_and_mount(portage,portage_mount)
 
     #check if screen does not exists already for given machine otherwise start it
-    (status, result) = commands.getstatusoutput('screen -list|grep buidler.%s' % machine)
+    (status, result) = commands.getstatusoutput('screen -list|grep builder.%s' % machine)
     message = '''
     Everything mounted, please issue following commands to login to machine environment:
     screen -R builder.%s
-    and set new PS1 with
-    export PS1='\[\033[01;31m\]\h\[\033[01;34m\] \W \$\[\033[00m\] '
     ''' % machine
     if not status:
         emit_message('\tScreen already exists .. skipping')
@@ -172,8 +159,9 @@ def screen_to_machine(machine):
         export PS1='\[\033[01;31m\]\h\[\033[01;34m\] \W \$\[\033[00m\] '
         ''' % (machine,machine,machine_chroot)
     else:        
-        #run initial screen and chroot
-        commands.getstatusoutput('screen -dmS builder.%s chroot %s' % (machine, machine_chroot))
+        #create bashrc and run initial screen and chroot into it
+        _create_bash_rcfile(machine_chroot + '/tmp/builder_bashrc', machine)
+        commands.getstatusoutput('screen -dmS builder.%s chroot %s /bin/bash --rcfile /tmp/builder_bashrc' % (machine, machine_chroot))
     emit_message(message)
 
 
@@ -181,9 +169,9 @@ def _check_and_mount(what,mount_point,type='bind'):
     '''
     Check if given mount [what] is mounted and mount if it is not.
     '''
-    status, result = commands.getstatusoutput('grep %s /proc/mounts|grep %s' % (mount_point,what))
+    status, result = commands.getstatusoutput('mount|grep  %s' % mount_point)
     if not status :
-        emit_message('\t[%s] already mounted .. skipping' % what)
+        emit_message('\t[%s] already mounted .. skipping' % mount_point)
     else:
         emit_message('\tmounting %s at [%s]' % (what,mount_point))
         if type == 'bind':
@@ -194,6 +182,19 @@ def _check_and_mount(what,mount_point,type='bind'):
         if status:
             print 'ERROR: unable to mount ..exiting. Reason: \n%s' %result
             sys.exit(2)
+
+def _create_bash_rcfile(rcfile, machine):
+    '''
+    Creates file for bash initialization (changing hostname)
+    '''
+    rc_text = """
+    . /etc/profile
+    export PS1='\\[\\033[01;31m\\]%s\[\\033[01;34m\\] \\W \\$\\[\\033[00m\\] '
+    echo 'Happy hacking'
+    """ % machine
+    f = open(rcfile, 'w')
+    f.write(rc_text)
+    f.close()
 
 def main():
     #check if user is root
