@@ -112,7 +112,7 @@ def _ensure_dir(dir):
         os.makedirs(dir)
     
 
-def screen_to_machine(machine):
+def screen_attach(machine):
     '''
     Responsible for checking that all mountpoints are mounted (sys,proc,
     portage and stuff).
@@ -164,6 +164,43 @@ def screen_to_machine(machine):
         commands.getstatusoutput('screen -dmS builder.%s chroot %s /bin/bash --rcfile /tmp/builder_bashrc' % (machine, machine_chroot))
     emit_message(message)
 
+def screen_dettach(machine):
+    '''
+    After screen session is over, unmount variuos directories for cleanup.
+    '''
+    emit_message('Deactivating screen from [%s]' % machine)
+    (status, result) = commands.getstatusoutput('screen -list|grep builder.%s' % machine)
+    #ask if the screen session exists
+    if not status:
+        emit_message('It appears, screen session to machine is still active, proceed? [y/n]')
+        answer = False
+        while not answer:
+            answer = sys.stdin.readline().rstrip()
+            if answer.lower() == 'y':
+                answer = True
+            else:
+                sys.exit(0)
+    #try to unmount directories
+    machine_chroot =  settings['config']['general']['chroots_top']+'/'+settings['machine']['name']
+    proc_mount = machine_chroot + '/proc'
+    sys_mount = machine_chroot + '/sys'
+    portage_mount = machine_chroot + '/usr/portage'
+    _umount(proc_mount)
+    _umount(sys_mount)
+    _umount(portage_mount)
+
+
+def _umount(mount_point):
+    '''
+    Try to umount given mount_point
+    '''
+    status, result = commands.getstatusoutput('umount %s' % mount_point)
+    if status:
+        emit_message('umount failed: %s' %result)
+    else:
+        emit_message('[%s] unmounted OK' % mount_point)
+
+        
 
 def _check_and_mount(what,mount_point,type='bind'):
     '''
@@ -206,18 +243,21 @@ def main():
     #parse arguments and define action
     usage = 'usage: %prog [options] <machine>'
     parser = OptionParser(usage=usage)
-    parser.add_option('-s', '--screen', dest='screen',
-            help='ensures some checks and swith to machine via screen',
+    parser.add_option('-a', '--attach', dest='attachScreen',
+            help='creates screen session into the chroot',
+            action='store_true', default=False)
+    parser.add_option('-d', '--dettach', dest='dettachScreen',
+            help='unmounts related directories after screen session is over',
             action='store_true', default=False)
     parser.add_option('-i', '--init', dest='init_machine',
             help='initalizes machine environment',
             action='store_true', default=False)
-    parser.add_option('-m', '--machine', dest='machineConfig', 
-            help='machine configuration file [/etc/builder/machine.conf]',
-            metavar='machineConfig')
     parser.add_option('-c', '--config', dest='configFile', 
             help='builder configuration file [/etc/builder/builder.conf]', 
-            metavar='configFile', default='/etc/builder/builder.conf')
+            metavar='configFile', default='etc/builder/builder.conf')
+    parser.add_option('-m', '--machine', dest='machineConfig', 
+            help='machine configuration file [<configFile>/machines/<machine>.conf]',
+            metavar='machineConfig')
     parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False,
                   help="Print some verbose messages")
 
@@ -246,12 +286,13 @@ def main():
     if options.machineConfig:
         machineConfigPath = options.machineConfig
     else:
-        machineConfigPath = os.path.dirname(configFile) + '/' + machine + '.conf'
+        machineConfigPath = os.path.dirname(configFile) + '/machines/' + machine + '.conf'
     if not os.path.exists(machineConfigPath) :
         print 'Cannot find machine config %s ..exiting' % machineConfigPath
         sys.exit(2)
     else:
         settings['machine'] = init_settings(configFile=machineConfigPath).dict()
+        settings['machine']['name'] = machine
 
     #dump settings if verbose
     if options.verbose:
@@ -260,8 +301,10 @@ def main():
     #handle actions
     if options.init_machine:
         init_machine(machine)
-    if options.screen:
-        screen_to_machine(machine)
+    if options.attachScreen:
+        screen_attach(machine)
+    if options.dettachScreen:
+        screen_dettach(machine)
 
 #main loop, if called as a program start main
 if __name__ == '__main__':
